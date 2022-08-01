@@ -1,0 +1,5 @@
+# Project exclude paths
+/ad-eureka/target/
+/ad-gateway/target/
+/ad-service/ad-common/target/
+/ad-service/ad-search/target/

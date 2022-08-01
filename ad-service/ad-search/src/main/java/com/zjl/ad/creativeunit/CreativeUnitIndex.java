@@ -1,0 +1,111 @@
+package com.zjl.ad.creativeunit;
+
+import com.zjl.ad.index.IndexAware;
+import com.zjl.ad.index.adunit.AdUnitObject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+
+/**
+ *  创意和推广单元关联的索引
+ */
+@Slf4j
+@Component
+public class CreativeUnitIndex implements
+        IndexAware<String, CreativeUnitObject> {
+
+    // <adId-unitId的组合, CreativeUnitObject>
+    private static Map<String, CreativeUnitObject> objectMap;
+    // <adId, unitId Set> 创意和推广单元是多对多的关系 所以一个创意id可以对应多个推广单元
+    private static Map<Long, Set<Long>> creativeUnitMap;
+    // <unitId, adId set> 反过来同理
+    private static Map<Long, Set<Long>> unitCreativeMap;
+
+    static {
+        objectMap = new ConcurrentHashMap<>();
+        creativeUnitMap = new ConcurrentHashMap<>();
+        unitCreativeMap = new ConcurrentHashMap<>();
+    }
+
+    @Override
+    public CreativeUnitObject get(String key) {
+        return objectMap.get(key);
+    }
+
+    @Override
+    public void add(String key, CreativeUnitObject value) {
+
+        log.info("before add: {}", objectMap);
+
+        objectMap.put(key, value);
+
+        // 根据AdId也就是创意id得到推广单元的集合
+        Set<Long> unitSet = creativeUnitMap.get(value.getAdId());
+        // 判断是否为空 如果为空创建一个新的
+        if (CollectionUtils.isEmpty(unitSet)) {
+            unitSet = new ConcurrentSkipListSet<>();
+            // put入creativeUnitMap
+            creativeUnitMap.put(value.getAdId(), unitSet);
+        }
+        // 将unitId填充进去
+        unitSet.add(value.getUnitId());
+
+        Set<Long> creativeSet = unitCreativeMap.get(value.getUnitId());
+        if (CollectionUtils.isEmpty(creativeSet)) {
+            creativeSet = new ConcurrentSkipListSet<>();
+            unitCreativeMap.put(value.getUnitId(), creativeSet);
+        }
+        creativeSet.add(value.getAdId());
+
+        log.info("after add: {}", objectMap);
+    }
+
+    @Override
+    public void update(String key, CreativeUnitObject value) {
+
+        log.error("CreativeUnitIndex not support update");
+    }
+
+    @Override
+    public void delete(String key, CreativeUnitObject value) {
+
+        log.info("before delete: {}", objectMap);
+
+        objectMap.remove(key);
+
+        Set<Long> unitSet = creativeUnitMap.get(value.getAdId());
+        if (CollectionUtils.isNotEmpty(unitSet)) {
+            unitSet.remove(value.getUnitId());
+        }
+
+        Set<Long> creativeSet = unitCreativeMap.get(value.getUnitId());
+        if (CollectionUtils.isNotEmpty(creativeSet)) {
+            creativeSet.remove(value.getAdId());
+        }
+
+        log.info("after delete: {}", objectMap);
+    }
+
+    public List<Long> selectAds(List<AdUnitObject> unitObjects) {
+
+        if (CollectionUtils.isEmpty(unitObjects)) {
+            return Collections.emptyList();
+        }
+
+        List<Long> result = new ArrayList<>();
+
+        for (AdUnitObject unitObject : unitObjects) {
+
+            Set<Long> adIds = unitCreativeMap.get(unitObject.getUnitId());
+            if (CollectionUtils.isNotEmpty(adIds)) {
+                result.addAll(adIds);
+            }
+        }
+
+        return result;
+    }
+}
